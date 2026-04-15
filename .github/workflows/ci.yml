@@ -22,12 +22,15 @@ jobs:
         run: golangci-lint run ./...
 
       - name: Test
+        shell: bash
         run: go test -coverprofile=coverage.out ./...
 
       - name: Coverage summary
+        shell: bash
         run: go tool cover -func=coverage.out
 
       - name: Build
+        shell: bash
         env:
           CGO_ENABLED: 1
         run: go build -o speedforce.exe ./cmd/speedforce
