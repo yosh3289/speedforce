@@ -20,11 +20,22 @@ import (
 )
 
 func main() {
+	release, singletonErr := platform.AcquireSingleton(`Global\SpeedForce.Singleton`)
+	if singletonErr != nil {
+		log.Fatalf("another instance already running: %v", singletonErr)
+	}
+	defer release()
+
 	cfgPath := configPath()
 
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		log.Fatalf("load config: %v", err)
+	}
+
+	exePath, _ := os.Executable()
+	if err := platform.SetAutoStart(cfg.UI.AutoStart, exePath); err != nil {
+		log.Printf("autostart: %v", err)
 	}
 
 	tr, err := i18n.New(cfg.Language)
