@@ -15,6 +15,19 @@ type Target struct {
 	URL  string
 }
 
+type IPProbeFunc interface {
+	Probe(ctx context.Context) (IPInfo, error)
+}
+
+type StatuspageProbeFunc interface {
+	Probe(ctx context.Context, name, url string) StatuspageResult
+}
+
+type StatuspageTarget struct {
+	Name string
+	URL  string
+}
+
 type SchedulerConfig struct {
 	Bus          *StateBus
 	HTTPS        HTTPSProbeFunc
@@ -26,6 +39,13 @@ type SchedulerConfig struct {
 	ThresholdMs     int64
 	RecoveryMs      int64
 	MaxFastDuration time.Duration
+
+	IP                  IPProbeFunc
+	IPRefreshEveryTicks int
+
+	Statuspage            StatuspageProbeFunc
+	StatuspageTargets     []StatuspageTarget
+	StatuspageIntervalSec int
 }
 
 type Scheduler struct {
@@ -36,6 +56,11 @@ type Scheduler struct {
 	fastSince     time.Time
 	stableTicks   int
 	lastLatencies map[string]int64
+
+	tickNum          int64
+	lastStatuspageAt time.Time
+	lastIP           IPInfo
+	lastStatuspage   []StatuspageResult
 }
 
 func NewScheduler(cfg SchedulerConfig) *Scheduler {
@@ -73,23 +98,70 @@ func (s *Scheduler) Run(ctx context.Context) {
 }
 
 func (s *Scheduler) doTick(ctx context.Context) {
+	s.mu.Lock()
+	s.tickNum++
+	tick := s.tickNum
+	s.mu.Unlock()
+
 	var wg sync.WaitGroup
-	results := make([]ProbeResult, len(s.cfg.HTTPSTargets))
+	httpsResults := make([]ProbeResult, len(s.cfg.HTTPSTargets))
 	for i, t := range s.cfg.HTTPSTargets {
 		wg.Add(1)
 		go func(i int, t Target) {
 			defer wg.Done()
-			results[i] = s.cfg.HTTPS.Probe(ctx, t.Name, t.URL)
+			httpsResults[i] = s.cfg.HTTPS.Probe(ctx, t.Name, t.URL)
 		}(i, t)
 	}
-	wg.Wait()
 
-	s.updateAdaptive(results)
+	shouldIP := s.cfg.IP != nil && s.cfg.IPRefreshEveryTicks > 0 &&
+		(tick == 1 || tick%int64(s.cfg.IPRefreshEveryTicks) == 0)
+	if shouldIP {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			info, err := s.cfg.IP.Probe(ctx)
+			if err == nil {
+				s.mu.Lock()
+				s.lastIP = info
+				s.mu.Unlock()
+			}
+		}()
+	}
+
+	shouldStatuspage := s.cfg.Statuspage != nil &&
+		(s.lastStatuspageAt.IsZero() ||
+			time.Since(s.lastStatuspageAt) >= time.Duration(s.cfg.StatuspageIntervalSec)*time.Second)
+	if shouldStatuspage {
+		spResults := make([]StatuspageResult, len(s.cfg.StatuspageTargets))
+		for i, t := range s.cfg.StatuspageTargets {
+			wg.Add(1)
+			go func(i int, t StatuspageTarget) {
+				defer wg.Done()
+				spResults[i] = s.cfg.Statuspage.Probe(ctx, t.Name, t.URL)
+			}(i, t)
+		}
+		wg.Wait()
+		s.mu.Lock()
+		s.lastStatuspage = spResults
+		s.lastStatuspageAt = time.Now()
+		s.mu.Unlock()
+	} else {
+		wg.Wait()
+	}
+
+	s.updateAdaptive(httpsResults)
+
+	s.mu.Lock()
+	ip := s.lastIP
+	sp := append([]StatuspageResult(nil), s.lastStatuspage...)
+	s.mu.Unlock()
 
 	s.cfg.Bus.Publish(State{
-		HTTPS:     results,
-		Mode:      s.currentMode(),
-		UpdatedAt: time.Now(),
+		HTTPS:      httpsResults,
+		IP:         ip,
+		Statuspage: sp,
+		Mode:       s.currentMode(),
+		UpdatedAt:  time.Now(),
 	})
 }
 
