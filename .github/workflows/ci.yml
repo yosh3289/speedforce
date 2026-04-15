@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
+      - name: Lint
+        run: golangci-lint run ./...
+
+      - name: Test
+        run: go test -coverprofile=coverage.out ./...
+
+      - name: Coverage summary
+        run: go tool cover -func=coverage.out
+
+      - name: Build
+        env:
+          CGO_ENABLED: 1
+        run: go build -o speedforce.exe ./cmd/speedforce
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: speedforce-windows
+          path: speedforce.exe
