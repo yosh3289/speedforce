@@ -1,12 +1,14 @@
 module github.com/yosh3289/speedforce
 
-go 1.26.2
+go 1.25.0
 
 require (
 	fyne.io/fyne/v2 v2.7.3
 	github.com/fsnotify/fsnotify v1.9.0
+	github.com/gen2brain/beeep v0.11.2
 	github.com/getlantern/systray v1.2.2
 	github.com/goccy/go-yaml v1.19.2
+	github.com/rs/zerolog v1.35.0
 	golang.org/x/sys v0.43.0
 )
 
@@ -21,7 +23,6 @@ require (
 	github.com/fyne-io/glfw-js v0.3.0 // indirect
 	github.com/fyne-io/image v0.1.1 // indirect
 	github.com/fyne-io/oksvg v0.2.0 // indirect
-	github.com/gen2brain/beeep v0.11.2 // indirect
 	github.com/getlantern/context v0.0.0-20190109183933-c447772a6520 // indirect
 	github.com/getlantern/errors v0.0.0-20190325191628-abdb3e3e36f7 // indirect
 	github.com/getlantern/golog v0.0.0-20190830074920-4ef2e798c2d7 // indirect
@@ -47,7 +48,6 @@ require (
 	github.com/nicksnyder/go-i18n/v2 v2.5.1 // indirect
 	github.com/oxtoacart/bpool v0.0.0-20190530202638-03653db5a59c // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/rs/zerolog v1.35.0 // indirect
 	github.com/rymdport/portal v0.4.2 // indirect
 	github.com/sergeymakinen/go-bmp v1.0.0 // indirect
 	github.com/sergeymakinen/go-ico v1.0.0-beta.0 // indirect
