@@ -1,0 +1,7 @@
+/speedforce
+/speedforce.exe
+/dist/
+*.log
+coverage.out
+.idea/
+.vscode/
