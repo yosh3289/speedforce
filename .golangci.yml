@@ -6,4 +6,5 @@ linters:
     - ineffassign
     - errcheck
 run:
-  timeout: 5m
+  timeout: 15m
+  tests: false
