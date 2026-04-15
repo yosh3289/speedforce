@@ -4,9 +4,9 @@ import "testing"
 
 func TestOverallStatus_Color(t *testing.T) {
 	cases := []struct {
-		name     string
-		status   OverallStatus
-		wantHex  string
+		name    string
+		status  OverallStatus
+		wantHex string
 	}{
 		{"healthy is blue", StatusHealthy, "#2979FF"},
 		{"degraded is yellow", StatusDegraded, "#FFC400"},

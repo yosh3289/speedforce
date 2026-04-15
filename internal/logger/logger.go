@@ -77,7 +77,7 @@ func (l *Logger) Sync() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.current != nil {
-		l.current.Sync()
+		_ = l.current.Sync()
 	}
 }
 
@@ -85,7 +85,7 @@ func (l *Logger) Close() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.current != nil {
-		l.current.Close()
+		_ = l.current.Close()
 		l.current = nil
 	}
 }

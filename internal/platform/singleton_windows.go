@@ -20,9 +20,9 @@ func AcquireSingleton(name string) (release func(), err error) {
 		return nil, callErr
 	}
 	if callErr == syscall.Errno(183) { // ERROR_ALREADY_EXISTS
-		syscall.CloseHandle(syscall.Handle(r1))
+		_ = syscall.CloseHandle(syscall.Handle(r1))
 		return nil, fmt.Errorf("already running")
 	}
 	handle := syscall.Handle(r1)
-	return func() { syscall.CloseHandle(handle) }, nil
+	return func() { _ = syscall.CloseHandle(handle) }, nil
 }
