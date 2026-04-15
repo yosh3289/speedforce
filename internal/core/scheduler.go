@@ -99,7 +99,88 @@ func (s *Scheduler) currentMode() TickMode {
 	return s.mode
 }
 
-// updateAdaptive: real implementation added in Task 12. For Task 11 it's a no-op.
 func (s *Scheduler) updateAdaptive(results []ProbeResult) {
-	// TODO: Task 12 implements adaptive tick state machine
+	if !s.cfg.AdaptiveEnabled {
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Check max-fast-duration cap first
+	if s.mode == TickFast && !s.fastSince.IsZero() &&
+		time.Since(s.fastSince) >= s.cfg.MaxFastDuration {
+		s.mode = TickNormal
+		s.fastSince = time.Time{}
+		s.stableTicks = 0
+		s.recordLatencies(results)
+		return
+	}
+
+	trigger := false
+	allStable := true
+
+	for _, r := range results {
+		prev, seen := s.lastLatencies[r.Name]
+		curr := r.LatencyMs
+
+		if seen {
+			delta := absInt64(curr - prev)
+			if delta > s.cfg.ThresholdMs {
+				trigger = true
+			}
+			if delta >= s.cfg.RecoveryMs {
+				allStable = false
+			}
+
+			prevUp := prev > 0
+			currUp := (ProbeResult{StatusCode: r.StatusCode, Err: r.Err}).IsUp()
+			if prevUp != currUp {
+				trigger = true
+			}
+		} else {
+			allStable = false
+		}
+	}
+
+	switch s.mode {
+	case TickNormal:
+		if trigger {
+			s.mode = TickFast
+			s.fastSince = time.Now()
+			s.stableTicks = 0
+		}
+	case TickFast:
+		if trigger {
+			s.stableTicks = 0
+		} else if allStable {
+			s.stableTicks++
+			if s.stableTicks >= 3 {
+				s.mode = TickNormal
+				s.fastSince = time.Time{}
+				s.stableTicks = 0
+			}
+		} else {
+			s.stableTicks = 0
+		}
+	}
+
+	s.recordLatencies(results)
+}
+
+func (s *Scheduler) recordLatencies(results []ProbeResult) {
+	for _, r := range results {
+		if r.Err == nil && r.LatencyMs > 0 {
+			s.lastLatencies[r.Name] = r.LatencyMs
+		} else {
+			s.lastLatencies[r.Name] = 0
+		}
+	}
+}
+
+func absInt64(x int64) int64 {
+	if x < 0 {
+		return -x
+	}
+	return x
 }
