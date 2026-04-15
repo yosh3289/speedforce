@@ -1,0 +1,4 @@
+{
+  "page": {"id": "def", "name": "OpenAI"},
+  "status": {"indicator": "major", "description": "Major service disruption"}
+}
