@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"archive/zip"
 	"fmt"
 	"io"
 	"os"
@@ -107,4 +108,46 @@ func (l *Logger) Prune() {
 			os.Remove(filepath.Join(l.opts.Dir, e.Name()))
 		}
 	}
+}
+
+func (l *Logger) ExportZip(outDir string, days int) (string, error) {
+	if err := os.MkdirAll(outDir, 0755); err != nil {
+		return "", err
+	}
+	outPath := filepath.Join(outDir, fmt.Sprintf("speedforce-logs-%s.zip", time.Now().Format("20060102-150405")))
+	f, err := os.Create(outPath)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	zw := zip.NewWriter(f)
+	defer zw.Close()
+
+	entries, err := os.ReadDir(l.opts.Dir)
+	if err != nil {
+		return "", err
+	}
+	cutoff := time.Now().AddDate(0, 0, -days)
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Name(), "probe-") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || info.ModTime().Before(cutoff) {
+			continue
+		}
+		src, err := os.Open(filepath.Join(l.opts.Dir, e.Name()))
+		if err != nil {
+			continue
+		}
+		w, err := zw.Create(e.Name())
+		if err != nil {
+			src.Close()
+			return "", err
+		}
+		_, _ = io.Copy(w, src)
+		src.Close()
+	}
+	return outPath, nil
 }
