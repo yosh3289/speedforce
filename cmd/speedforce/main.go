@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
+	"flag"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2/app"
@@ -26,11 +29,19 @@ func main() {
 	}
 	defer release()
 
+	fakeDown := flag.String("fake-down", "", "comma-separated service names to simulate as down")
+	tickOverride := flag.Int("tick", 0, "override tick interval in seconds (debug)")
+	flag.Parse()
+
 	cfgPath := configPath()
 
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		log.Fatalf("load config: %v", err)
+	}
+
+	if *tickOverride > 0 {
+		cfg.Network.TickInterval = *tickOverride
 	}
 
 	exePath, _ := os.Executable()
@@ -50,7 +61,17 @@ func main() {
 		SystemProxyFn: platform.SystemProxyFunc(),
 	})
 
-	httpsProber := probe.NewHTTPSProber(client)
+	var httpsProber core.HTTPSProbeFunc = probe.NewHTTPSProber(client)
+	if *fakeDown != "" {
+		set := make(map[string]bool)
+		for _, n := range strings.Split(*fakeDown, ",") {
+			set[strings.TrimSpace(n)] = true
+		}
+		httpsProber = &fakeDownProber{
+			inner:   probe.NewHTTPSProber(client),
+			downSet: set,
+		}
+	}
 	ipProber := probe.NewIPProber(client, cfg.Probes.IP.PublicIPAPI, cfg.Probes.IP.GeoAPI)
 	spProber := probe.NewStatuspageProber(client)
 
@@ -137,3 +158,17 @@ func configPath() string {
 	_ = os.MkdirAll(dir, 0755)
 	return filepath.Join(dir, "config.yaml")
 }
+
+type fakeDownProber struct {
+	inner   *probe.HTTPSProber
+	downSet map[string]bool
+}
+
+func (f *fakeDownProber) Probe(ctx context.Context, name, url string) core.ProbeResult {
+	if f.downSet[name] {
+		return core.ProbeResult{Name: name, URL: url, Err: errFakeDown, Timestamp: time.Now()}
+	}
+	return f.inner.Probe(ctx, name, url)
+}
+
+var errFakeDown = errors.New("fake-down")
