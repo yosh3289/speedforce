@@ -1,10 +1,10 @@
 # SpeedForce ⚡
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) &nbsp; [English](README_eng.md)
+
 轻量级 Windows 托盘应用，实时监测你的网络能否访问 Claude、OpenAI 和 Gemini —— 专为通过代理访问 AI 服务的用户打造。
 
 🔵 全部正常 &nbsp; 🟡 部分降级 &nbsp; 🔴 严重异常
-
-[English](README_eng.md)
 
 ## 功能特性
 
