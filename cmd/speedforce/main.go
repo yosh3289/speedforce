@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 
 	"github.com/yosh3289/speedforce/internal/config"
@@ -45,8 +46,10 @@ func main() {
 	}
 
 	exePath, _ := os.Executable()
-	if err := platform.SetAutoStart(cfg.UI.AutoStart, exePath); err != nil {
-		log.Printf("autostart: %v", err)
+	if isAuto, _ := platform.IsAutoStart(); isAuto != cfg.UI.AutoStart {
+		if err := platform.SetAutoStart(cfg.UI.AutoStart, exePath); err != nil {
+			log.Printf("autostart: %v", err)
+		}
 	}
 
 	tr, err := i18n.New(cfg.Language)
@@ -115,7 +118,13 @@ func main() {
 	showSettings := func() {
 		if settingsWin == nil {
 			settingsWin = settings.New(fyneApp, tr, cfg,
-				func(newCfg *config.Config) error { return nil },
+				func(newCfg *config.Config) error {
+					if err := config.Save(cfgPath, newCfg); err != nil {
+						return err
+					}
+					_ = tr.SetLocale(newCfg.Language)
+					return nil
+				},
 				func() (string, error) { return "", nil },
 			)
 		}
@@ -134,7 +143,7 @@ func main() {
 		OnSettings: showSettings,
 		OnQuit: func() {
 			cancel()
-			os.Exit(0)
+			fyneApp.Quit()
 		},
 	})
 
@@ -143,10 +152,22 @@ func main() {
 		for s := range sub {
 			overall := core.ComputeOverall(s.HTTPS, s.Statuspage)
 			t.SetStatus(overall)
+			t.UpdateTooltip(s)
 		}
 	}()
 
-	t.Run()
+	go t.Run()
+
+	// Hidden master window keeps fyne event loop alive even when no
+	// detail/settings window is visible. fyne.Run() exits if no windows
+	// are shown.
+	master := fyneApp.NewWindow("SpeedForce")
+	master.SetMaster()
+	master.SetCloseIntercept(func() { master.Hide() })
+	master.Resize(fyne.NewSize(1, 1))
+	master.Hide()
+
+	fyneApp.Run()
 }
 
 func configPath() string {

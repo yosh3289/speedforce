@@ -50,7 +50,7 @@ probes:
 
   ip:
     public_ip_api: https://api.ipify.org?format=json
-    geo_api: https://ipapi.co/{ip}/json/
+    geo_api: http://ip-api.com/json/{ip}
     refresh_every_ticks: 5
 
 ui:

@@ -1,6 +1,8 @@
 package tray
 
 import (
+	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/getlantern/systray"
@@ -68,4 +70,42 @@ func (t *Tray) SetStatus(status core.OverallStatus) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	systray.SetIcon(IconFor(status))
+}
+
+func (t *Tray) UpdateTooltip(s core.State) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	var lines []string
+	lines = append(lines, "SpeedForce ⚡")
+
+	if s.IP.PublicIP != "" {
+		ip := s.IP.PublicIP
+		if s.IP.Country != "" {
+			ip = fmt.Sprintf("%s (%s)", s.IP.PublicIP, s.IP.Country)
+		}
+		lines = append(lines, "IP: "+ip)
+	}
+
+	up, down := 0, 0
+	for _, p := range s.HTTPS {
+		if p.IsUp() {
+			up++
+		} else {
+			down++
+		}
+	}
+	lines = append(lines, fmt.Sprintf("Services: %d/%d up", up, up+down))
+
+	if down > 0 {
+		var names []string
+		for _, p := range s.HTTPS {
+			if !p.IsUp() {
+				names = append(names, p.Name)
+			}
+		}
+		lines = append(lines, "Down: "+strings.Join(names, ", "))
+	}
+
+	systray.SetTooltip(strings.Join(lines, "\n"))
 }

@@ -17,7 +17,7 @@ func TestIPProber_FetchesPublicAndGeo(t *testing.T) {
 
 	geoSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"country_name":"United States","city":"San Francisco","org":"Cloudflare"}`))
+		w.Write([]byte(`{"country":"United States","city":"San Francisco","isp":"Cloudflare"}`))
 	}))
 	defer geoSrv.Close()
 

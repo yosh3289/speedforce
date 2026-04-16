@@ -15,7 +15,7 @@ func TestComputeOverall_AllUp(t *testing.T) {
 
 func TestComputeOverall_SlowIsDegraded(t *testing.T) {
 	probes := []ProbeResult{
-		{Name: "a", StatusCode: 200, LatencyMs: 1500},
+		{Name: "a", StatusCode: 200, LatencyMs: 3500},
 	}
 	if got := ComputeOverall(probes, nil); got != StatusDegraded {
 		t.Errorf("got %v, want degraded", got)

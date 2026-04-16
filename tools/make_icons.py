@@ -1,61 +1,60 @@
-"""One-off icon generator.
+"""Icon generator: draws flat-color-icons flash bolt → multi-size ICO.
 
-Takes the source pixel-art lightning PNG and emits three tinted .ico
-files (blue / yellow / red) for use by the tray app.
+Uses the same polygon coordinates as Icons8 flat-color-icons flash_on.
+No external SVG renderer needed — pure Pillow.
 """
 
 import os
-from PIL import Image
+import shutil
+from PIL import Image, ImageDraw
 
-SRC = "E:/0-syb/dev/speedforce/Pixel_Flash_Icon.png"
-OUT_DIR = "E:/0-syb/dev/speedforce/assets/icons"
+BASE = "E:/0-syb/dev/speedforce"
+OUT_DIR = os.path.join(BASE, "assets/icons")
+EMBED_DIR = os.path.join(BASE, "internal/ui/tray/icons")
 
 VARIANTS = {
-    "blue":   ((41, 121, 255),  (13, 71, 161)),
-    "yellow": ((255, 196, 0),   (180, 100, 0)),
-    "red":    ((213, 0, 0),     (127, 0, 0)),
+    "blue": (41, 121, 255),
+    "yellow": (255, 196, 0),
+    "red": (213, 0, 0),
 }
 
-BRIGHT_THRESHOLD = 150
-ALPHA_THRESHOLD = 50
+RENDER_SIZE = 256
+ICO_SIZES = [(16, 16), (24, 24), (32, 32), (48, 48)]
+
+
+def draw_lightning(color: tuple, size: int) -> Image.Image:
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    s = size / 48.0
+    points = [
+        (33 * s, 22 * s),
+        (23.6 * s, 22 * s),
+        (30 * s, 5 * s),
+        (19 * s, 5 * s),
+        (13 * s, 26 * s),
+        (21.6 * s, 26 * s),
+        (17 * s, 45 * s),
+    ]
+    draw.polygon(points, fill=color)
+    return img
 
 
 def main() -> None:
     os.makedirs(OUT_DIR, exist_ok=True)
+    os.makedirs(EMBED_DIR, exist_ok=True)
 
-    src = Image.open(SRC).convert("RGBA")
-    bbox = src.getbbox()
-    if bbox:
-        src = src.crop(bbox)
+    for name, color in VARIANTS.items():
+        big = draw_lightning(color, RENDER_SIZE)
 
-    w, h = src.size
-    side = max(w, h)
-    padded = Image.new("RGBA", (side, side), (0, 0, 0, 0))
-    padded.paste(src, ((side - w) // 2, (side - h) // 2))
-    src = padded
+        ico_name = f"lightning-{name}.ico"
+        ico_path = os.path.join(OUT_DIR, ico_name)
+        big.save(ico_path, format="ICO", sizes=ICO_SIZES)
+        sz = os.path.getsize(ico_path)
+        print(f"wrote {ico_path} ({sz} bytes)")
 
-    src_pixels = src.load()
-
-    for name, (primary, outline) in VARIANTS.items():
-        out = Image.new("RGBA", src.size, (0, 0, 0, 0))
-        dst_pixels = out.load()
-
-        for x in range(src.width):
-            for y in range(src.height):
-                r, g, b, a = src_pixels[x, y]
-                if a < ALPHA_THRESHOLD:
-                    continue
-                brightness = (r + g + b) / 3
-                color = primary if brightness > BRIGHT_THRESHOLD else outline
-                dst_pixels[x, y] = color + (a,)
-
-        out_path = os.path.join(OUT_DIR, f"lightning-{name}.ico")
-        out.save(
-            out_path,
-            format="ICO",
-            sizes=[(16, 16), (24, 24), (32, 32), (48, 48)],
-        )
-        print(f"wrote {out_path}")
+        embed_path = os.path.join(EMBED_DIR, ico_name)
+        shutil.copy2(ico_path, embed_path)
+        print(f"  → {embed_path}")
 
 
 if __name__ == "__main__":

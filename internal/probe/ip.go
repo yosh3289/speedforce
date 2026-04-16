@@ -46,9 +46,9 @@ type ipifyResp struct {
 }
 
 type geoResp struct {
-	Country string `json:"country_name"`
+	Country string `json:"country"`
 	City    string `json:"city"`
-	Org     string `json:"org"`
+	Org     string `json:"isp"`
 }
 
 func (p *IPProber) fetchPublicIP(ctx context.Context) (string, error) {

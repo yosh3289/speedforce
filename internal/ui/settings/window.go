@@ -30,6 +30,10 @@ func New(app fyne.App, tr *i18n.Translator, cfg *config.Config, save SaveFunc, e
 }
 
 func (w *Window) Show() {
+	fyne.Do(w.show)
+}
+
+func (w *Window) show() {
 	w.mu.Lock()
 	if w.win != nil {
 		w.win.Show()

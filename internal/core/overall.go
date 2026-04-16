@@ -12,7 +12,7 @@ func ComputeOverall(probes []ProbeResult, sp []StatuspageResult) OverallStatus {
 	for _, p := range probes {
 		if !p.IsUp() {
 			downCount++
-		} else if p.LatencyMs > 1000 {
+		} else if p.LatencyMs > 3000 {
 			slow = true
 		}
 	}
