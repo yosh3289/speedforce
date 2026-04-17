@@ -24,8 +24,10 @@ var (
 
 func dotRow(c color.Color, text string) fyne.CanvasObject {
 	circle := canvas.NewCircle(c)
-	cell := container.NewGridWrap(fyne.NewSize(14, 14), circle)
-	return container.NewHBox(cell, widget.NewLabel(text))
+	dotCell := container.NewGridWrap(fyne.NewSize(14, 14), circle)
+	// NewCenter inside the left region of a Border layout vertically
+	// centers the dot against the label's natural line height.
+	return container.NewBorder(nil, nil, container.NewCenter(dotCell), nil, widget.NewLabel(text))
 }
 
 type Window struct {
@@ -43,7 +45,9 @@ type Window struct {
 }
 
 func New(app fyne.App, tr *i18n.Translator, bus *core.StateBus, onSettings func()) *Window {
-	return &Window{app: app, i18n: tr, bus: bus, onSettings: onSettings}
+	w := &Window{app: app, i18n: tr, bus: bus, onSettings: onSettings}
+	go w.subscribe()
+	return w
 }
 
 func (w *Window) Show() {
@@ -97,7 +101,8 @@ func (w *Window) Show() {
 		w.win.Show()
 		w.mu.Unlock()
 
-		go w.subscribe()
+		// Push current state to newly-created widgets without waiting for next tick.
+		go w.update(w.bus.Snapshot())
 	})
 }
 
