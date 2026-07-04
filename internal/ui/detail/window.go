@@ -36,12 +36,14 @@ type Window struct {
 	bus        *core.StateBus
 	onSettings func()
 
-	mu        sync.Mutex
-	win       fyne.Window
-	modeLbl   *widget.Label
-	ipLbl     *widget.Label
-	probesBox *fyne.Container
-	spBox     *fyne.Container
+	mu          sync.Mutex
+	win         fyne.Window
+	visible     bool
+	builtLocale string
+	modeLbl     *widget.Label
+	ipLbl       *widget.Label
+	probesBox   *fyne.Container
+	spBox       *fyne.Container
 }
 
 func New(app fyne.App, tr *i18n.Translator, bus *core.StateBus, onSettings func()) *Window {
@@ -50,60 +52,78 @@ func New(app fyne.App, tr *i18n.Translator, bus *core.StateBus, onSettings func(
 	return w
 }
 
+// Show creates the window on first use and reuses it thereafter. Closing the
+// window (the X button) hides it rather than destroying it, so the underlying
+// GLFW window and its OpenGL context are reused on the next open.
+//
+// Previously every open called NewWindow and every close destroyed it; on
+// Windows that leaked ~2 MB of native (GL/cgo) memory per open/close cycle
+// because the driver does not fully release the destroyed context. Reusing a
+// single hidden window avoids the churn entirely.
 func (w *Window) Show() {
 	fyne.Do(func() {
 		w.mu.Lock()
-		if w.win != nil {
-			w.win.Show()
-			w.win.RequestFocus()
-			w.mu.Unlock()
-			return
+		if w.win == nil {
+			w.win = w.app.NewWindow(w.i18n.T("detail.title"))
+			w.win.Resize(fyne.NewSize(420, 520))
+			w.win.SetCloseIntercept(func() {
+				w.mu.Lock()
+				w.visible = false
+				w.mu.Unlock()
+				w.win.Hide()
+			})
+			w.buildContentLocked()
+		} else if w.builtLocale != w.i18n.Locale() {
+			// Language switched at runtime: rebuild content in place. No new
+			// window is created, so there is no GL-context churn.
+			w.buildContentLocked()
 		}
-		w.win = w.app.NewWindow(w.i18n.T("detail.title"))
-		w.win.Resize(fyne.NewSize(420, 520))
-		w.win.SetOnClosed(func() {
-			w.mu.Lock()
-			w.win = nil
-			w.mu.Unlock()
-		})
-
-		w.modeLbl = widget.NewLabel(w.i18n.T("detail.mode.normal"))
-		w.ipLbl = widget.NewLabel("...")
-		w.probesBox = container.NewVBox()
-		w.spBox = container.NewVBox()
-
-		geminiBtn := widget.NewButton(w.i18n.T("detail.button.open_gemini_status"), func() {
-			u, _ := url.Parse("https://aistudio.google.com/status")
-			_ = w.app.OpenURL(u)
-		})
-
-		settingsBtn := widget.NewButton(w.i18n.T("detail.button.settings"), func() {
-			if w.onSettings != nil {
-				w.onSettings()
-			}
-		})
-
-		content := container.NewVBox(
-			container.NewHBox(widget.NewLabel(w.i18n.T("app_name")+" — "), w.modeLbl),
-			widget.NewSeparator(),
-			widget.NewLabel(w.i18n.T("detail.section.ip")),
-			w.ipLbl,
-			widget.NewSeparator(),
-			widget.NewLabel(w.i18n.T("detail.section.probes")),
-			w.probesBox,
-			widget.NewSeparator(),
-			widget.NewLabel(w.i18n.T("detail.section.statuspage")),
-			w.spBox,
-			widget.NewSeparator(),
-			container.NewHBox(geminiBtn, settingsBtn),
-		)
-		w.win.SetContent(content)
+		w.visible = true
 		w.win.Show()
+		w.win.RequestFocus()
+		snap := w.bus.Snapshot()
 		w.mu.Unlock()
 
-		// Push current state to newly-created widgets without waiting for next tick.
-		go w.update(w.bus.Snapshot())
+		// Populate the (possibly freshly built) widgets immediately.
+		go w.update(snap)
 	})
+}
+
+// buildContentLocked builds the widgets and sets window content. Caller holds mu.
+func (w *Window) buildContentLocked() {
+	w.win.SetTitle(w.i18n.T("detail.title"))
+	w.modeLbl = widget.NewLabel(w.i18n.T("detail.mode.normal"))
+	w.ipLbl = widget.NewLabel("...")
+	w.probesBox = container.NewVBox()
+	w.spBox = container.NewVBox()
+
+	geminiBtn := widget.NewButton(w.i18n.T("detail.button.open_gemini_status"), func() {
+		u, _ := url.Parse("https://aistudio.google.com/status")
+		_ = w.app.OpenURL(u)
+	})
+
+	settingsBtn := widget.NewButton(w.i18n.T("detail.button.settings"), func() {
+		if w.onSettings != nil {
+			w.onSettings()
+		}
+	})
+
+	content := container.NewVBox(
+		container.NewHBox(widget.NewLabel(w.i18n.T("app_name")+" — "), w.modeLbl),
+		widget.NewSeparator(),
+		widget.NewLabel(w.i18n.T("detail.section.ip")),
+		w.ipLbl,
+		widget.NewSeparator(),
+		widget.NewLabel(w.i18n.T("detail.section.probes")),
+		w.probesBox,
+		widget.NewSeparator(),
+		widget.NewLabel(w.i18n.T("detail.section.statuspage")),
+		w.spBox,
+		widget.NewSeparator(),
+		container.NewHBox(geminiBtn, settingsBtn),
+	)
+	w.win.SetContent(content)
+	w.builtLocale = w.i18n.Locale()
 }
 
 func (w *Window) subscribe() {
@@ -118,7 +138,7 @@ func (w *Window) update(s core.State) {
 	fyne.Do(func() {
 		w.mu.Lock()
 		defer w.mu.Unlock()
-		if w.win == nil {
+		if w.win == nil || !w.visible {
 			return
 		}
 		if s.Mode == core.TickFast {
@@ -171,11 +191,15 @@ func (w *Window) update(s core.State) {
 	})
 }
 
+// Close destroys the window. Used only on app shutdown; normal user close is
+// intercepted to Hide (see Show).
 func (w *Window) Close() {
 	w.mu.Lock()
-	defer w.mu.Unlock()
-	if w.win != nil {
-		w.win.Close()
-		w.win = nil
+	win := w.win
+	w.win = nil
+	w.visible = false
+	w.mu.Unlock()
+	if win != nil {
+		win.Close()
 	}
 }
