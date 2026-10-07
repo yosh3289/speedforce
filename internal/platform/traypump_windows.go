@@ -44,7 +44,7 @@ var (
 
 var tpEnumCallback = syscall.NewCallback(func(hwnd uintptr, _ uintptr) uintptr {
 	var pid uint32
-	tpGetWindowThreadProcess.Call(hwnd, uintptr(unsafe.Pointer(&pid)))
+	_, _, _ = tpGetWindowThreadProcess.Call(hwnd, uintptr(unsafe.Pointer(&pid)))
 	if uintptr(pid) != tpMyPID {
 		return 1 // not ours; continue enumeration
 	}
@@ -64,7 +64,7 @@ func findTrayWindow() uintptr {
 	myPID, _, _ := tpGetCurrentProcess.Call()
 	tpMyPID = myPID
 	tpFoundHwnd = 0
-	tpEnumWindows.Call(tpEnumCallback, 0)
+	_, _, _ = tpEnumWindows.Call(tpEnumCallback, 0)
 	return tpFoundHwnd
 }
 
