@@ -44,7 +44,7 @@ probes:
     notify_on_major_outage: true
     sources:
       - name: Anthropic
-        url: https://status.anthropic.com/api/v2/status.json
+        url: https://status.claude.com/api/v2/status.json
       - name: OpenAI
         url: https://status.openai.com/api/v2/status.json
 

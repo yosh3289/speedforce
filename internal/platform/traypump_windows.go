@@ -8,7 +8,7 @@ import (
 	"unsafe"
 )
 
-// Liveness probe for the getlantern/systray Win32 message pump. The pump runs
+// Liveness probe for the fyne.io/systray Win32 message pump. The pump runs
 // on a dedicated OS thread that owns the hidden "SystrayClass" window; if it
 // ever stops servicing that window's message queue (historically because the
 // pump goroutine migrated off the window's thread), the tray icon stays painted

@@ -8,7 +8,7 @@ A lightweight Windows tray app that watches your ability to reach Claude, OpenAI
 
 - 6 HTTPS reachability probes (3 API endpoints + 3 consumer web endpoints)
 - Public IP + LAN IP + geolocation + ISP
-- Anthropic and OpenAI Statuspage integration; direct link to Gemini / AI Studio status
+- Anthropic and OpenAI Statuspage integration; one-click links to the Claude / OpenAI / Gemini status pages
 - Per-service opt-in notifications (OS toasts)
 - Adaptive polling: 60s by default, 10s on instability, 60s once stable for 3 ticks
 - Auto-detect system proxy; manual proxy override

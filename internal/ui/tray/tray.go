@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/getlantern/systray"
+	"fyne.io/systray"
 
 	"github.com/yosh3289/speedforce/internal/core"
 	"github.com/yosh3289/speedforce/internal/i18n"
@@ -22,26 +22,33 @@ type Tray struct {
 	i18n *i18n.Translator
 	cb   Callbacks
 
+	// tapCh carries left-clicks on the tray icon from the message pump to
+	// handleEvents.
+	tapCh chan struct{}
+
 	mu sync.Mutex
 }
 
 func New(tr *i18n.Translator, cb Callbacks) *Tray {
-	return &Tray{i18n: tr, cb: cb}
+	return &Tray{i18n: tr, cb: cb, tapCh: make(chan struct{}, 1)}
 }
 
 func (t *Tray) Run() {
-	// Pin this goroutine to its OS thread for its entire life. getlantern/systray
-	// runs a Win32 message pump (GetMessage) here, and Win32 delivers a window's
-	// messages ONLY to the thread that created it. This goroutine is not the main
-	// goroutine (fyne owns that for its GL context), and systray's own init() only
-	// LockOSThreads goroutine-1 — so without this, the Go scheduler eventually
-	// migrates the pump off the thread that created the tray window. After that
-	// migration the pump blocks in GetMessage on a thread that owns no window and
-	// never sees the tray's clicks: the icon stays but the menu goes permanently
-	// dead (confirmed via minidump, 2026-07-07). LockOSThread prevents the
-	// migration. It is never unlocked; when systray.Run returns on quit this
-	// goroutine exits and the runtime reclaims the thread.
+	// Pin this goroutine to its OS thread for its entire life. systray.Run creates
+	// the tray window and runs a Win32 message pump (GetMessage) on this goroutine,
+	// and Win32 delivers a window's messages ONLY to the thread that created it.
+	// This goroutine is not the main goroutine (fyne owns that for its GL context),
+	// and systray's own init() only LockOSThreads goroutine-1 — so without this,
+	// the Go scheduler eventually migrates the pump off the thread that created
+	// the tray window. After that migration the pump blocks in GetMessage on a
+	// thread that owns no window and never sees the tray's clicks: the icon stays
+	// but the menu goes permanently dead (confirmed via minidump, 2026-07-07).
+	// LockOSThread prevents the migration. It is never unlocked; when systray.Run
+	// returns on quit this goroutine exits and the runtime reclaims the thread.
 	runtime.LockOSThread()
+	// Left-click opens the detail window; right-click keeps showing the menu.
+	// Registered before Run so it is in place before the pump starts.
+	systray.SetOnTapped(t.onTapped)
 	systray.Run(t.onReady, t.onExit)
 }
 
@@ -54,23 +61,41 @@ func (t *Tray) onReady() {
 	systray.AddSeparator()
 	mQuit := systray.AddMenuItem(t.i18n.T("tray.menu.quit"), "")
 
-	go func() {
-		for {
-			select {
-			case <-mDetail.ClickedCh:
-				if t.cb.OnDetail != nil {
-					t.cb.OnDetail()
-				}
-			case <-mSettings.ClickedCh:
-				if t.cb.OnSettings != nil {
-					t.cb.OnSettings()
-				}
-			case <-mQuit.ClickedCh:
-				systray.Quit()
-				return
+	go t.handleEvents(mDetail.ClickedCh, mSettings.ClickedCh, mQuit.ClickedCh, systray.Quit)
+}
+
+// onTapped handles a left-click on the tray icon. It runs synchronously inside
+// the tray's window procedure on the message-pump thread, so it must never
+// block — a stalled pump is exactly what kills the tray menu. It only records a
+// pending request (repeats coalesce) and handleEvents opens the window.
+func (t *Tray) onTapped() {
+	select {
+	case t.tapCh <- struct{}{}:
+	default: // a request is already pending
+	}
+}
+
+// handleEvents runs the callbacks for all tray clicks on this one goroutine.
+func (t *Tray) handleEvents(detail, settings, quit <-chan struct{}, quitTray func()) {
+	for {
+		select {
+		case <-t.tapCh:
+			if t.cb.OnDetail != nil {
+				t.cb.OnDetail()
 			}
+		case <-detail:
+			if t.cb.OnDetail != nil {
+				t.cb.OnDetail()
+			}
+		case <-settings:
+			if t.cb.OnSettings != nil {
+				t.cb.OnSettings()
+			}
+		case <-quit:
+			quitTray()
+			return
 		}
-	}()
+	}
 }
 
 func (t *Tray) onExit() {

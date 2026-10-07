@@ -22,6 +22,17 @@ var (
 	dotGray   = color.NRGBA{R: 158, G: 158, B: 158, A: 255}
 )
 
+// statusPages are the providers' official status pages, opened in the browser
+// from a row of buttons at the bottom of the detail window.
+var statusPages = []struct {
+	labelKey string
+	url      string
+}{
+	{"detail.button.open_claude_status", "https://status.claude.com"},
+	{"detail.button.open_openai_status", "https://status.openai.com"},
+	{"detail.button.open_gemini_status", "https://aistudio.google.com/status"},
+}
+
 func dotRow(c color.Color, text string) fyne.CanvasObject {
 	circle := canvas.NewCircle(c)
 	dotCell := container.NewGridWrap(fyne.NewSize(14, 14), circle)
@@ -97,10 +108,13 @@ func (w *Window) buildContentLocked() {
 	w.probesBox = container.NewVBox()
 	w.spBox = container.NewVBox()
 
-	geminiBtn := widget.NewButton(w.i18n.T("detail.button.open_gemini_status"), func() {
-		u, _ := url.Parse("https://aistudio.google.com/status")
-		_ = w.app.OpenURL(u)
-	})
+	statusBtns := container.NewGridWithColumns(len(statusPages))
+	for _, p := range statusPages {
+		u, _ := url.Parse(p.url)
+		statusBtns.Add(widget.NewButton(w.i18n.T(p.labelKey), func() {
+			_ = w.app.OpenURL(u)
+		}))
+	}
 
 	settingsBtn := widget.NewButton(w.i18n.T("detail.button.settings"), func() {
 		if w.onSettings != nil {
@@ -120,7 +134,8 @@ func (w *Window) buildContentLocked() {
 		widget.NewLabel(w.i18n.T("detail.section.statuspage")),
 		w.spBox,
 		widget.NewSeparator(),
-		container.NewHBox(geminiBtn, settingsBtn),
+		statusBtns,
+		container.NewHBox(settingsBtn),
 	)
 	w.win.SetContent(content)
 	w.builtLocale = w.i18n.Locale()
