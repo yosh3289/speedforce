@@ -33,17 +33,38 @@ func (w *Window) Show() {
 	fyne.Do(w.show)
 }
 
+// show creates the window on first use and reuses it thereafter, like the
+// detail window. Closing it (the X button, Save or Cancel) only hides it: fyne
+// silently ignores Show on a closed window, so keeping a closed window left
+// Settings unopenable until restart, and re-creating windows churns native GL
+// resources. The form is rebuilt on every open so it reflects the current
+// config and discards edits that were cancelled.
 func (w *Window) show() {
 	w.mu.Lock()
-	if w.win != nil {
-		w.win.Show()
-		w.win.RequestFocus()
-		w.mu.Unlock()
-		return
+	defer w.mu.Unlock()
+	if w.win == nil {
+		win := w.app.NewWindow(w.i18n.T("settings.title"))
+		win.Resize(fyne.NewSize(420, 480))
+		win.SetCloseIntercept(w.close)
+		// If the window is ever really closed (e.g. on app shutdown), forget
+		// it so the next open builds a new one.
+		win.SetOnClosed(func() {
+			w.mu.Lock()
+			defer w.mu.Unlock()
+			if w.win == win {
+				w.win = nil
+			}
+		})
+		w.win = win
 	}
-	w.win = w.app.NewWindow(w.i18n.T("settings.title"))
-	w.win.Resize(fyne.NewSize(420, 480))
+	w.win.SetTitle(w.i18n.T("settings.title"))
+	w.win.SetContent(w.buildFormLocked())
+	w.win.Show()
+	w.win.RequestFocus()
+}
 
+// buildFormLocked builds the settings form from the current config. Caller holds mu.
+func (w *Window) buildFormLocked() fyne.CanvasObject {
 	langSel := widget.NewSelect([]string{"zh", "en"}, nil)
 	langSel.Selected = w.cfg.Language
 
@@ -97,7 +118,7 @@ func (w *Window) show() {
 
 	cancelBtn := widget.NewButton(w.i18n.T("settings.cancel"), w.close)
 
-	form := container.NewVBox(
+	return container.NewVBox(
 		labelRow(w.i18n.T("settings.language"), langSel),
 		labelRow(w.i18n.T("settings.proxy.mode"), proxyMode),
 		labelRow(w.i18n.T("settings.proxy.url"), proxyURL),
@@ -111,17 +132,14 @@ func (w *Window) show() {
 		widget.NewSeparator(),
 		container.NewHBox(saveBtn, cancelBtn),
 	)
-	w.win.SetContent(form)
-	w.win.Show()
-	w.mu.Unlock()
 }
 
+// close hides the window; see show.
 func (w *Window) close() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.win != nil {
-		w.win.Close()
-		w.win = nil
+		w.win.Hide()
 	}
 }
 
