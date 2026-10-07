@@ -203,14 +203,21 @@ func configPath() string {
 // consecutive failures (not one) avoids false positives around sleep/resume.
 func runWatchdog(exePath string, release func(), quitting *atomic.Bool) {
 	const probeEvery = 20 * time.Second
-	const probeTimeout = 30 * time.Second
+	const uiTimeout = 30 * time.Second
+	const trayTimeout = 10 * time.Second
 	stalls := 0
 	for {
 		time.Sleep(probeEvery)
 		if quitting.Load() {
 			return
 		}
-		if uiResponsive(probeTimeout) {
+		// Probe BOTH event loops. The fyne GL loop and the systray Win32 message
+		// pump run on different OS threads; either can wedge independently and a
+		// dead tray pump (the confirmed v0.1.3 failure) leaves fyne perfectly
+		// responsive, so probing only fyne is blind to it.
+		uiOK := uiResponsive(uiTimeout)
+		trayOK := platform.TrayPumpResponsive(uint32(trayTimeout / time.Millisecond))
+		if uiOK && trayOK {
 			stalls = 0
 			continue
 		}
@@ -218,9 +225,9 @@ func runWatchdog(exePath string, release func(), quitting *atomic.Bool) {
 			return
 		}
 		stalls++
-		log.Printf("watchdog: UI loop unresponsive (%d/2)", stalls)
+		log.Printf("watchdog: unresponsive ui=%v tray=%v (%d/2)", uiOK, trayOK, stalls)
 		if stalls >= 2 {
-			recoverWedge(exePath, release)
+			recoverWedge(exePath, release, fmt.Sprintf("ui_responsive=%v tray_responsive=%v", uiOK, trayOK))
 			return
 		}
 	}
@@ -238,8 +245,8 @@ func uiResponsive(timeout time.Duration) bool {
 	}
 }
 
-func recoverWedge(exePath string, release func()) {
-	dumpGoroutines()
+func recoverWedge(exePath string, release func(), reason string) {
+	dumpGoroutines(reason)
 	if !allowRestart() {
 		log.Printf("watchdog: too many restarts within 10m; not relaunching again")
 		return // keep holding the single-instance mutex; leave process as-is
@@ -259,13 +266,14 @@ func recoverWedge(exePath string, release func()) {
 
 // dumpGoroutines writes a full goroutine trace next to the config file, so a
 // wedge occurring in real use leaves behind the stuck loop's stack.
-func dumpGoroutines() {
+func dumpGoroutines(reason string) {
 	buf := make([]byte, 1<<20)
 	n := runtime.Stack(buf, true)
 	dir := appDataDir()
 	_ = os.MkdirAll(dir, 0o755)
 	path := filepath.Join(dir, fmt.Sprintf("wedge-%s.log", time.Now().Format("20060102-150405")))
-	if err := os.WriteFile(path, buf[:n], 0o644); err != nil {
+	header := fmt.Sprintf("wedge reason: %s\n\n", reason)
+	if err := os.WriteFile(path, append([]byte(header), buf[:n]...), 0o644); err != nil {
 		log.Printf("watchdog: failed to write dump: %v", err)
 		return
 	}

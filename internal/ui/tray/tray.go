@@ -2,6 +2,7 @@ package tray
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -29,6 +30,18 @@ func New(tr *i18n.Translator, cb Callbacks) *Tray {
 }
 
 func (t *Tray) Run() {
+	// Pin this goroutine to its OS thread for its entire life. getlantern/systray
+	// runs a Win32 message pump (GetMessage) here, and Win32 delivers a window's
+	// messages ONLY to the thread that created it. This goroutine is not the main
+	// goroutine (fyne owns that for its GL context), and systray's own init() only
+	// LockOSThreads goroutine-1 — so without this, the Go scheduler eventually
+	// migrates the pump off the thread that created the tray window. After that
+	// migration the pump blocks in GetMessage on a thread that owns no window and
+	// never sees the tray's clicks: the icon stays but the menu goes permanently
+	// dead (confirmed via minidump, 2026-07-07). LockOSThread prevents the
+	// migration. It is never unlocked; when systray.Run returns on quit this
+	// goroutine exits and the runtime reclaims the thread.
+	runtime.LockOSThread()
 	systray.Run(t.onReady, t.onExit)
 }
 
