@@ -80,19 +80,57 @@ func (p *IPProber) fetchGeo(ctx context.Context, ip string) (geoResp, error) {
 	return r, nil
 }
 
+// firstLANIP returns the machine's LAN address: the local address of the
+// interface outbound traffic uses. Taking the first interface address instead
+// picks unpredictable adapters, e.g. a disconnected Wi-Fi card's 169.254.x.
 func firstLANIP() string {
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		return ""
+	var cands []net.IP
+	if addrs, err := net.InterfaceAddrs(); err == nil {
+		for _, a := range addrs {
+			if ipNet, ok := a.(*net.IPNet); ok {
+				cands = append(cands, ipNet.IP)
+			}
+		}
 	}
-	for _, a := range addrs {
-		ipNet, ok := a.(*net.IPNet)
-		if !ok || ipNet.IP.IsLoopback() {
+	return pickLANIP(defaultRouteIP(), cands)
+}
+
+// defaultRouteIP is the local address the OS would use to reach the internet.
+// Connecting a UDP socket only consults the routing table; nothing is sent.
+func defaultRouteIP() net.IP {
+	conn, err := net.Dial("udp", "8.8.8.8:53")
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = conn.Close() }()
+	if a, ok := conn.LocalAddr().(*net.UDPAddr); ok {
+		return a.IP
+	}
+	return nil
+}
+
+// pickLANIP prefers the default route's address, else the first private
+// address, else any other usable one. Loopback, link-local (169.254.x) and
+// non-IPv4 addresses are never chosen.
+func pickLANIP(route net.IP, cands []net.IP) string {
+	usable := func(ip net.IP) bool {
+		ip4 := ip.To4()
+		return ip4 != nil && !ip4.IsLoopback() && !ip4.IsLinkLocalUnicast() && !ip4.IsUnspecified()
+	}
+	if usable(route) {
+		return route.To4().String()
+	}
+	fallback := ""
+	for _, ip := range cands {
+		if !usable(ip) {
 			continue
 		}
-		if ip4 := ipNet.IP.To4(); ip4 != nil {
-			return ip4.String()
+		if ip.IsPrivate() {
+			return ip.To4().String()
+		}
+		if fallback == "" {
+			fallback = ip.To4().String()
 		}
 	}
-	return ""
+	return fallback
 }
