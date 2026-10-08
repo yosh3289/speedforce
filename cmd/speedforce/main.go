@@ -22,7 +22,7 @@ import (
 	"github.com/yosh3289/speedforce/internal/i18n"
 	"github.com/yosh3289/speedforce/internal/platform"
 	"github.com/yosh3289/speedforce/internal/probe"
-	"github.com/yosh3289/speedforce/internal/ui/detail"
+	"github.com/yosh3289/speedforce/internal/ui/panel"
 	"github.com/yosh3289/speedforce/internal/ui/settings"
 	"github.com/yosh3289/speedforce/internal/ui/tray"
 )
@@ -115,8 +115,10 @@ func main() {
 	go sch.Run(ctx)
 
 	fyneApp := app.NewWithID("com.speedforce")
+	// Windows without their own icon (Settings, dialogs) use the app icon in
+	// their title bar; without this they show the toolkit's default.
+	fyneApp.SetIcon(fyne.NewStaticResource("speedforce.svg", tray.AppIconSVG))
 
-	var detailWin *detail.Window
 	var settingsWin *settings.Window
 
 	showSettings := func() {
@@ -135,16 +137,15 @@ func main() {
 		settingsWin.Show()
 	}
 
-	showDetail := func() {
-		if detailWin == nil {
-			detailWin = detail.New(fyneApp, tr, bus, showSettings)
-		}
-		detailWin.Show()
-	}
+	// The tray flyout. It hides whenever the app loses focus (a click anywhere
+	// else, or opening Settings / a status page from it).
+	pnl := panel.New(fyneApp, tr, bus, showSettings)
+	fyneApp.Lifecycle().SetOnExitedForeground(pnl.FocusLost)
 
 	var quitting atomic.Bool
 	t := tray.New(tr, tray.Callbacks{
-		OnDetail:   showDetail,
+		OnTap:      pnl.Toggle,
+		OnDetail:   pnl.Show,
 		OnSettings: showSettings,
 		OnQuit: func() {
 			quitting.Store(true)
@@ -165,7 +166,7 @@ func main() {
 	go t.Run()
 
 	// Hidden master window keeps fyne event loop alive even when no
-	// detail/settings window is visible. fyne.Run() exits if no windows
+	// panel/settings window is visible. fyne.Run() exits if no windows
 	// are shown.
 	master := fyneApp.NewWindow("SpeedForce")
 	master.SetMaster()

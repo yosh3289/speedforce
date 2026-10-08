@@ -15,7 +15,8 @@ A lightweight Windows tray app that watches your ability to reach Claude, OpenAI
 - Bilingual (zh / en)
 - Log export (last 7 days zipped)
 - Single-instance; starts with Windows (optional)
-- ~10 MB idle memory, ~30 MB with detail window open
+- Left-click the tray icon for a flyout panel docked by the taskbar (latency bars, official status, expandable network details)
+- ~10 MB idle memory, ~30 MB with the panel open
 
 ## Install
 

@@ -13,7 +13,8 @@ import (
 )
 
 type Callbacks struct {
-	OnDetail   func()
+	OnTap      func() // left-click on the tray icon
+	OnDetail   func() // "Show Details" menu item
 	OnSettings func()
 	OnQuit     func()
 }
@@ -46,7 +47,7 @@ func (t *Tray) Run() {
 	// LockOSThread prevents the migration. It is never unlocked; when systray.Run
 	// returns on quit this goroutine exits and the runtime reclaims the thread.
 	runtime.LockOSThread()
-	// Left-click opens the detail window; right-click keeps showing the menu.
+	// Left-click toggles the panel (OnTap); right-click keeps showing the menu.
 	// Registered before Run so it is in place before the pump starts.
 	systray.SetOnTapped(t.onTapped)
 	systray.Run(t.onReady, t.onExit)
@@ -67,7 +68,7 @@ func (t *Tray) onReady() {
 // onTapped handles a left-click on the tray icon. It runs synchronously inside
 // the tray's window procedure on the message-pump thread, so it must never
 // block — a stalled pump is exactly what kills the tray menu. It only records a
-// pending request (repeats coalesce) and handleEvents opens the window.
+// pending request (repeats coalesce) and handleEvents calls OnTap.
 func (t *Tray) onTapped() {
 	select {
 	case t.tapCh <- struct{}{}:
@@ -80,8 +81,8 @@ func (t *Tray) handleEvents(detail, settings, quit <-chan struct{}, quitTray fun
 	for {
 		select {
 		case <-t.tapCh:
-			if t.cb.OnDetail != nil {
-				t.cb.OnDetail()
+			if t.cb.OnTap != nil {
+				t.cb.OnTap()
 			}
 		case <-detail:
 			if t.cb.OnDetail != nil {

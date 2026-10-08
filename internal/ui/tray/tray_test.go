@@ -5,11 +5,14 @@ import (
 	"time"
 )
 
-// A left-click on the tray icon opens the detail window, the same as the
-// "Show Details" menu item.
-func TestLeftClickOpensDetail(t *testing.T) {
-	opened := make(chan struct{}, 1)
-	tr := New(nil, Callbacks{OnDetail: func() { opened <- struct{}{} }})
+// A left-click on the tray icon calls OnTap (toggle the panel), not OnDetail
+// (the "Show Details" menu item, which only opens it).
+func TestLeftClickCallsOnTap(t *testing.T) {
+	tapped := make(chan struct{}, 1)
+	tr := New(nil, Callbacks{
+		OnTap:    func() { tapped <- struct{}{} },
+		OnDetail: func() { t.Error("left-click called OnDetail") },
+	})
 	quit := make(chan struct{})
 	defer close(quit)
 	go tr.handleEvents(nil, nil, quit, func() {})
@@ -17,9 +20,9 @@ func TestLeftClickOpensDetail(t *testing.T) {
 	tr.onTapped()
 
 	select {
-	case <-opened:
+	case <-tapped:
 	case <-time.After(2 * time.Second):
-		t.Fatal("left-click did not open the detail window")
+		t.Fatal("left-click did not call OnTap")
 	}
 }
 
