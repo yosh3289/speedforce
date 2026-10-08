@@ -107,6 +107,57 @@ func TestNetworkDetailsExpand(t *testing.T) {
 	}
 }
 
+func TestStatusCodeNote(t *testing.T) {
+	tests := []struct {
+		p    core.ProbeResult
+		want string
+	}{
+		{core.ProbeResult{StatusCode: 200}, "panel.code.ok"},
+		{core.ProbeResult{StatusCode: 301}, "panel.code.ok"},
+		{core.ProbeResult{StatusCode: 404}, "panel.code.reachable"},
+		{core.ProbeResult{StatusCode: 403}, "panel.code.reachable"},
+		{core.ProbeResult{StatusCode: 421}, "panel.code.reachable"},
+		{core.ProbeResult{StatusCode: 407}, "panel.code.proxy_auth"},
+		{core.ProbeResult{StatusCode: 429}, "panel.code.rate_limited"},
+		{core.ProbeResult{StatusCode: 503}, "panel.code.server_error"},
+		{core.ProbeResult{Err: errors.New("timeout")}, "panel.code.unreached"},
+	}
+	for _, tt := range tests {
+		if got := statusCodeNote(tt.p); got != tt.want {
+			t.Errorf("code %d err %v: got %q, want %q", tt.p.StatusCode, tt.p.Err, got, tt.want)
+		}
+	}
+}
+
+// Each status code in the network details carries a short explanation, in
+// every supported language.
+func TestNetworkDetailsExplainStatusCodes(t *testing.T) {
+	for _, locale := range []string{"en", "zh"} {
+		p, _, _ := newTestPanel(t, locale)
+		p.state = core.State{HTTPS: []core.ProbeResult{
+			{Name: "Claude API", StatusCode: 404},
+			{Name: "Gemini Web", Err: errors.New("timeout")},
+		}}
+		p.detailsOpen = true
+		p.toggle()
+
+		for _, want := range []string{
+			"Claude API — HTTP 404 · " + p.i18n.T("panel.code.reachable"),
+			"Gemini Web — " + p.i18n.T("panel.failed") + " · " + p.i18n.T("panel.code.unreached"),
+		} {
+			if findLabel(p.win.Content(), want) == nil {
+				t.Errorf("%s: no %q in network details", locale, want)
+			}
+		}
+		for _, key := range []string{"panel.code.ok", "panel.code.reachable", "panel.code.proxy_auth",
+			"panel.code.rate_limited", "panel.code.server_error", "panel.code.unreached", "panel.code.hint"} {
+			if p.i18n.T(key) == key {
+				t.Errorf("%s: %s has no translation", locale, key)
+			}
+		}
+	}
+}
+
 // Expanding or collapsing the details must not resize the panel: it is docked
 // against the taskbar, so a height change would move its top edge.
 func TestExpandingDetailsKeepsPanelSize(t *testing.T) {

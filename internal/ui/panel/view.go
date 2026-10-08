@@ -56,6 +56,27 @@ func latencyBar(p core.ProbeResult) (float32, color.Color) {
 	return frac, barBlue
 }
 
+// statusCodeNote returns the i18n key of a short explanation of a probe's
+// result. Probes are anonymous HEAD requests to each service's root, so most
+// 4xx codes (404, 403, 421…) just mean the request reached the provider's
+// server; only a few codes point at a real problem.
+func statusCodeNote(p core.ProbeResult) string {
+	switch c := p.StatusCode; {
+	case p.Err != nil:
+		return "panel.code.unreached" // network / DNS / proxy: never got an answer
+	case c == 407:
+		return "panel.code.proxy_auth"
+	case c == 429:
+		return "panel.code.rate_limited"
+	case c >= 500:
+		return "panel.code.server_error"
+	case c >= 400:
+		return "panel.code.reachable"
+	default:
+		return "panel.code.ok"
+	}
+}
+
 // buildContent builds the whole panel from the current state and returns it
 // with the size the window should have. The footer is pinned; everything above
 // it scrolls. The height is always that of the body with the network details
@@ -198,12 +219,15 @@ func (p *Panel) networkDetails(s core.State, open bool) fyne.CanvasObject {
 		location += " · " + s.IP.ISP
 	}
 	lines = append(lines, p.i18n.T("panel.location")+": "+location)
+	if len(s.HTTPS) > 0 {
+		lines = append(lines, p.i18n.T("panel.code.hint"))
+	}
 	for _, r := range s.HTTPS {
 		code := "HTTP " + strconv.Itoa(r.StatusCode)
 		if r.Err != nil {
 			code = p.i18n.T("panel.failed")
 		}
-		lines = append(lines, r.Name+" — "+code)
+		lines = append(lines, r.Name+" — "+code+" · "+p.i18n.T(statusCodeNote(r)))
 	}
 	box := container.NewVBox(toggle)
 	for _, l := range lines {
